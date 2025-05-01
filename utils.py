@@ -1,6 +1,8 @@
 import torch
 import torchvision.datasets as datasets
 import torchvision.transforms as transforms
+import torchvision.io as io
+from torchvision.transforms import Compose, Resize, ToTensor
 from torch.utils.data import DataLoader
 import time
 import os
@@ -45,10 +47,13 @@ def load_block():
                        ]))
     return train, val
 
-def load_latent_block():
-    data_folder_path = os.getcwd()
-    data_file_path = data_folder_path + \
-        '/data/latent_e_indices.npy'
+def load_latent_block(latent_path=None):
+    if latent_path is None:
+        data_folder_path = os.getcwd()
+        data_file_path = data_folder_path + \
+        '/latent/latent_e_indices.npy'
+    else:
+        data_file_path = os.path.abspath(latent_path)
 
     train = LatentBlockDataset(data_file_path, train=True,
                          transform=None)
@@ -71,7 +76,7 @@ def data_loaders(train_data, val_data, batch_size):
     return train_loader, val_loader
 
 
-def load_data_and_data_loaders(dataset, batch_size):
+def load_data_and_data_loaders(dataset, batch_size, latent_path):
     if dataset == 'CIFAR10':
         training_data, validation_data = load_cifar()
         training_loader, validation_loader = data_loaders(
@@ -85,7 +90,7 @@ def load_data_and_data_loaders(dataset, batch_size):
 
         x_train_var = np.var(training_data.data / 255.0)
     elif dataset == 'LATENT_BLOCK':
-        training_data, validation_data = load_latent_block()
+        training_data, validation_data = load_latent_block(latent_path)
         training_loader, validation_loader = data_loaders(
             training_data, validation_data, batch_size)
 
@@ -103,13 +108,16 @@ def readable_timestamp():
         ' ', '_').replace(':', '_').lower()
 
 
-def save_model_and_results(model, results, hyperparameters, timestamp):
-    SAVE_MODEL_PATH = os.getcwd() + '/results'
+def save_latents_from_model(model, dataloader, embedding_dim, save_path):
+    model.eval()
+    all_indices = []
+    with torch.no_grad():
+        for x, _ in dataloader:
+            x = x.to(next(model.parameters()).device)
+            _, _, _, _, indices = model(x)
+            all_indices.append(indices.cpu().numpy())
+    all_latents = np.concatenate(all_indices, axis=0)  # [N, H, W]
+    np.save(save_path, all_latents.astype(np.uint8))
 
-    results_to_save = {
-        'model': model.state_dict(),
-        'results': results,
-        'hyperparameters': hyperparameters
-    }
-    torch.save(results_to_save,
-               SAVE_MODEL_PATH + '/vqvae_data_' + timestamp + '.pth')
+if __name__ == "__main__":
+    save_latents_from_model

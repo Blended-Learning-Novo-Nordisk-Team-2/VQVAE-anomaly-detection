@@ -8,13 +8,13 @@ from torch.distributions import kl_divergence
 
 
 def weights_init(m):
-    classname = m.__class__.__name__
-    if classname.find('Conv') != -1:
+    if isinstance(m, nn.Conv2d):
         try:
-            nn.init.xavier_uniform_(m.weight.data)
-            m.bias.data.fill_(0)
-        except AttributeError:
-            print("Skipping initialization of ", classname)
+            nn.init.xavier_uniform_(m.weight)
+            if m.bias is not None:
+                m.bias.data.fill_(0)
+        except Exception as e:
+            print(f"[SKIP] Failed to init {m}: {e}")
 
 
 
@@ -76,6 +76,12 @@ class GatedMaskedConv2d(nn.Module):
         v2h = self.vert_to_horiz(h_vert)
 
         out = self.gate(v2h + h_horiz + h[:, :, None, None])
+        if out.shape[-1] != x_h.shape[-1] or out.shape[-2] != x_h.shape[-2]:
+            min_h = min(out.shape[-2], x_h.shape[-2])
+            min_w = min(out.shape[-1], x_h.shape[-1])
+            out = out[:, :, :min_h, :min_w]
+            x_h = x_h[:, :, :min_h, :min_w]
+
         if self.residual:
             out_h = self.horiz_resid(out) + x_h
         else:

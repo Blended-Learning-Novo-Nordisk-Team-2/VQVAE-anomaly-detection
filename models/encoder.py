@@ -21,22 +21,36 @@ class Encoder(nn.Module):
 
     """
 
-    def __init__(self, in_dim, h_dim, n_res_layers, res_h_dim):
+    def __init__(self, in_dim, h_dim, n_res_layers, res_h_dim, dropout):
         super(Encoder, self).__init__()
         kernel = 4
         stride = 2
         self.conv_stack = nn.Sequential(
-            nn.Conv2d(in_dim, h_dim // 2, kernel_size=kernel,
+            nn.Conv2d(in_dim, h_dim // 4, kernel_size=kernel,
                       stride=stride, padding=1),
             nn.ReLU(),
+            nn.Dropout(dropout),
+
+            nn.Conv2d(h_dim // 4, h_dim // 2, kernel_size=kernel,
+                      stride=stride, padding=1),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+
             nn.Conv2d(h_dim // 2, h_dim, kernel_size=kernel,
                       stride=stride, padding=1),
             nn.ReLU(),
+            nn.Dropout(dropout),
+
+            nn.Conv2d(h_dim, h_dim, kernel_size=kernel-1,
+                      stride=stride-1, padding=1),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+
             nn.Conv2d(h_dim, h_dim, kernel_size=kernel-1,
                       stride=stride-1, padding=1),
             ResidualStack(
-                h_dim, h_dim, res_h_dim, n_res_layers)
-
+                h_dim, h_dim, res_h_dim, n_res_layers),
+            nn.AdaptiveAvgPool2d((64, 64))  # output always 64×64
         )
 
     def forward(self, x):
@@ -45,10 +59,11 @@ class Encoder(nn.Module):
 
 if __name__ == "__main__":
     # random data
-    x = np.random.random_sample((3, 40, 40, 200))
+    x = np.random.random_sample((3, 1, 512, 512))
     x = torch.tensor(x).float()
+    print('Encoder in shape:', x.shape)
 
     # test encoder
-    encoder = Encoder(40, 128, 3, 64)
+    encoder = Encoder(1, 256, 3, 64)
     encoder_out = encoder(x)
     print('Encoder out shape:', encoder_out.shape)

@@ -19,7 +19,7 @@ class Decoder(nn.Module):
 
     """
 
-    def __init__(self, in_dim, h_dim, n_res_layers, res_h_dim):
+    def __init__(self, in_dim, h_dim, n_res_layers, res_h_dim, dropout):
         super(Decoder, self).__init__()
         kernel = 4
         stride = 2
@@ -28,10 +28,23 @@ class Decoder(nn.Module):
             nn.ConvTranspose2d(
                 in_dim, h_dim, kernel_size=kernel-1, stride=stride-1, padding=1),
             ResidualStack(h_dim, h_dim, res_h_dim, n_res_layers),
+            nn.Dropout(dropout),
+
+            nn.ConvTranspose2d(h_dim, h_dim,
+                               kernel_size=kernel-1, stride=stride-1, padding=1),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            
             nn.ConvTranspose2d(h_dim, h_dim // 2,
                                kernel_size=kernel, stride=stride, padding=1),
             nn.ReLU(),
-            nn.ConvTranspose2d(h_dim//2, 3, kernel_size=kernel,
+            nn.Dropout(dropout),
+            
+            nn.ConvTranspose2d(h_dim // 2, h_dim // 4,
+                               kernel_size=kernel, stride=stride, padding=1),
+            nn.ReLU(),
+
+            nn.ConvTranspose2d(h_dim // 4, 1, kernel_size=kernel,
                                stride=stride, padding=1)
         )
 
@@ -41,10 +54,10 @@ class Decoder(nn.Module):
 
 if __name__ == "__main__":
     # random data
-    x = np.random.random_sample((3, 40, 40, 200))
+    x = np.random.random_sample((3, 256, 64, 64))
     x = torch.tensor(x).float()
 
     # test decoder
-    decoder = Decoder(40, 128, 3, 64)
+    decoder = Decoder(256, 256, 1, 64)
     decoder_out = decoder(x)
     print('Dncoder out shape:', decoder_out.shape)

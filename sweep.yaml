@@ -1,0 +1,53 @@
+program: train.py
+method: bayes  # 빠른 수렴을 위해 Bayesian optimization 사용
+metric:
+  name: val_total_loss
+  goal: minimize
+
+parameters:
+  beta:
+    values: [0.1, 0.25, 0.5, 1.0]
+
+  embedding_dim:
+    values: [128, 256, 512]
+
+  n_embeddings:
+    values: [64, 128, 256]
+
+  dropout:
+    values: [0.0, 0.1, 0.2]
+
+  learning_rate:
+    distribution: log_uniform_values
+    min: 1e-5
+    max: 1e-3
+
+  batch_size:
+    values: [8, 16, 32]
+
+  seed:
+    value: 42
+
+  n_hiddens:
+    value: 256
+
+  n_residual_hiddens:
+    value: 64
+
+  n_residual_layers:
+    value: 4
+
+  epochs:
+    value: 100
+
+  patience:
+    value: 10
+
+  min_delta:
+    value: 1e-4
+
+  device:
+    value: gpu
+
+  save:
+    value: True

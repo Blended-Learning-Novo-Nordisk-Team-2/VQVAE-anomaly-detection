@@ -73,4 +73,7 @@ class VectorQuantizer(nn.Module):
         # reshape back to match original input shape
         z_q = z_q.permute(0, 3, 1, 2).contiguous()
 
-        return loss, z_q, perplexity, min_encodings, min_encoding_indices
+        B, H, W, _ = z.shape
+        encoding_indices = min_encoding_indices.view(B, H, W)
+
+        return loss, z_q, perplexity, encoding_indices
