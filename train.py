@@ -8,7 +8,7 @@ from pytorch_lightning import Trainer, seed_everything
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
 from models.vqvae import LitVQVAE
-from dataset import get_dataloaders
+from datasets.dataset import get_dataloaders
 import argparse
 from utils import save_latents_from_model
 from pathlib import Path
@@ -79,6 +79,7 @@ def main():
         logger=logger,
         callbacks=[checkpoint, early_stop],
         default_root_dir=save_dir,
+        enable_progress_bar=True,
         log_every_n_steps=10,
         devices=1,
         precision='16-mixed'

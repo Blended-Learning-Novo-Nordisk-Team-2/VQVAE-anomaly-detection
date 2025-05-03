@@ -4,7 +4,7 @@ import os
 import torch
 from models.vqvae import LitVQVAE
 from utils import save_latents_from_model
-from dataset import get_dataloaders
+from datasets.dataset import get_dataloaders
 from argparse import ArgumentParser
 from pathlib import Path
 import subprocess
@@ -23,7 +23,7 @@ def main(save_dir):
     args = Args(**args_dict)
 
     # 2. 모델 로드
-    ckpt_path = os.path.join(save_dir, 'best-epoch=47-val_total_loss=0.0473.ckpt')
+    ckpt_path = os.path.join(save_dir, 'best-epoch=99-val_total_loss=0.0537.ckpt')
     model = LitVQVAE.load_from_checkpoint(ckpt_path, args=args)
     model.eval().cuda()
 
@@ -35,33 +35,38 @@ def main(save_dir):
     os.makedirs(latent_path.parent, exist_ok=True)
     save_latents_from_model(model, train_loader, args.embedding_dim, save_path=latent_path)
 
-    # 5. PixelCNN 학습
-    pixelcnn_save_dir = Path(save_dir) / "pixelcnn"
-    os.makedirs(pixelcnn_save_dir, exist_ok=True)
+    # # 5. PixelCNN 학습
+    # pixelcnn_save_dir = Path(save_dir) / "pixelcnn"
+    # os.makedirs(pixelcnn_save_dir, exist_ok=True)
 
-    print("Running PixelCNN command:")
-    print([
-        "python", "pixelcnn/gated_pixelcnn.py",
-        "--data_path", str(latent_path),
-        "--dataset", "LATENT_BLOCK",
-        "--save_dir", str(pixelcnn_save_dir),
-        "--save"
-    ])
+    # print("Running PixelCNN command:")
+    # print([
+    #     "python", "pixelcnn/gated_pixelcnn.py",
+    #     "--data_path", str(latent_path),
+    #     "--dataset", "LATENT_BLOCK",
+    #     "--save_dir", str(pixelcnn_save_dir),
+    #     "--save"
+    # ])
+
+    # subprocess.run([
+    #     "python", "pixelcnn/gated_pixelcnn.py",
+    #     "--data_path", str(latent_path),
+    #     "--dataset", "LATENT_BLOCK",
+    #     "--save_dir", str(Path(pixelcnn_save_dir).resolve()),
+    #     "--save"
+    # ], stdout=sys.stdout, stderr=sys.stderr)
+
+    # # 6. Inference 실행
+    # subprocess.run([
+    #     "python", "inference.py",
+    #     "--model_ckpt", str(ckpt_path),
+    #     "--pixelcnn_ckpt", str(pixelcnn_save_dir / "best_model.pt"),
+    #     "--output_dir", str(Path(save_dir) / "inference")
+    # ])
 
     subprocess.run([
-        "python", "pixelcnn/gated_pixelcnn.py",
-        "--data_path", str(latent_path),
-        "--dataset", "LATENT_BLOCK",
-        "--save_dir", str(Path(pixelcnn_save_dir).resolve()),
-        "--save"
-    ], stdout=sys.stdout, stderr=sys.stderr)
-
-    # 6. Inference 실행
-    subprocess.run([
-        "python", "inference.py",
-        "--model_ckpt", str(ckpt_path),
-        "--pixelcnn_ckpt", str(pixelcnn_save_dir / "best_model.pt"),
-        "--output_dir", str(Path(save_dir) / "inference")
+        "python", "simple_inference.py",
+        "--model_dir", "saved_models"
     ])
 
 if __name__ == "__main__":

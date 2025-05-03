@@ -67,9 +67,10 @@ def main():
     args = parser.parse_args()
 
     
-    ckpt_dir = os.path.join(args.model_dir, '2025-05-01_02-55-07')
+    ckpt_dir = os.path.join(args.model_dir, '2025-05-02_22-48-04')
     config_path = Path(ckpt_dir) / "config.yaml"
     output_dir = os.path.join(ckpt_dir, 'inference')
+    os.makedirs(output_dir, exist_ok=True)
 
     with open(config_path, "r") as f:
         args_dict = yaml.safe_load(f)
@@ -79,7 +80,7 @@ def main():
             self.__dict__.update(entries)
 
     model_args = Args(**args_dict)
-    model_ckpt = Path(ckpt_dir) / 'best-epoch=47-val_total_loss=0.0473.ckpt'
+    model_ckpt = Path(ckpt_dir) / 'best-epoch=99-val_total_loss=0.0537.ckpt'
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = LitVQVAE.load_from_checkpoint(model_ckpt, args=model_args)
     model.to(device).eval()
