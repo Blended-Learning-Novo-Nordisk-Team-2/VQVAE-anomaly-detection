@@ -12,7 +12,7 @@ import yaml
 
 def main(save_dir):
     # 1. args 복원 (config.yaml로부터)
-    config_path = Path(save_dir) / "config.yaml"
+    config_path = Path(save_dir).parent / "config.yaml"
     with open(config_path, "r") as f:
         args_dict = yaml.safe_load(f)
 
@@ -23,7 +23,7 @@ def main(save_dir):
     args = Args(**args_dict)
 
     # 2. 모델 로드
-    ckpt_path = os.path.join(save_dir, 'best-epoch=99-val_total_loss=0.0537.ckpt')
+    ckpt_path = Path(save_dir)
     model = LitVQVAE.load_from_checkpoint(ckpt_path, args=args)
     model.eval().cuda()
 
@@ -31,7 +31,7 @@ def main(save_dir):
     train_loader, _ = get_dataloaders(args)
 
     # 4. latent 저장
-    latent_path = Path(save_dir) / "latent" / "latent_e_indices.npy"
+    latent_path = Path(save_dir).parent / "latent" / "latent_e_indices.npy"
     os.makedirs(latent_path.parent, exist_ok=True)
     save_latents_from_model(model, train_loader, args.embedding_dim, save_path=latent_path)
 
@@ -66,7 +66,7 @@ def main(save_dir):
 
     subprocess.run([
         "python", "simple_inference.py",
-        "--model_dir", "saved_models"
+        "--model_dir", ckpt_path
     ])
 
 if __name__ == "__main__":

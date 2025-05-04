@@ -50,7 +50,7 @@ class Encoder(nn.Module):
                       stride=stride-1, padding=1),
             ResidualStack(
                 h_dim, h_dim, res_h_dim, n_res_layers),
-            nn.AdaptiveAvgPool2d((64, 64))  # output always 64×64
+            nn.AdaptiveAvgPool2d((32, 32))  # output always 64×64
         )
 
     def forward(self, x):
