@@ -4,115 +4,175 @@ import torch
 import numpy as np
 import matplotlib.pyplot as plt
 from models.vqvae import LitVQVAE
-from pixelcnn.models import GatedPixelCNN
 from torchvision.transforms import ToTensor, Resize, Compose
 from PIL import Image
 from glob import glob
 import torch.nn.functional as F
 from pathlib import Path
 import yaml
+from sklearn.metrics import roc_auc_score
 
+# List of OCT image categories
 CATEGORY_LIST = ["CNV", "DME", "DRUSEN", "NORMAL"]
 
-def load_pixelcnn_model(weight_path, device='cpu'):
-    input_dim = 128
-    dim = 64
-    n_layers = 15
-    model = GatedPixelCNN(input_dim=input_dim, dim=dim, n_layers=n_layers, n_classes=1).to(device)
-    checkpoint = torch.load(weight_path, map_location=device)
-    model.load_state_dict(checkpoint['model_state_dict'])
-    model.eval()
-    return model
-
-def get_nll_map(model, latent_map):
-    x = latent_map.unsqueeze(0).long()
-    label = torch.zeros(1, dtype=torch.long, device=x.device)
-    logits = model(x, label)
-    probs = F.softmax(logits, dim=1)
-    log_probs = torch.log(probs + 1e-9)
-    true_class = x.unsqueeze(1)
-    log_prob = log_probs.gather(1, true_class).squeeze(1)
-    return -log_prob.detach().cpu().squeeze(0)
+# Global lists to store anomaly scores and labels
+all_scores = []
+all_labels = []
 
 def load_category_samples(category, num_samples=3, base_dir='test_dataset'):
     """
-    Load num_samples images from a flat directory matching a category prefix (e.g., CNV, DME, etc.)
-    Assumes images are named like 'CNV-xxxx.jpeg', etc.
+    Load sample images from a specific category.
+    
+    Args:
+        category: Category name (e.g., 'CNV', 'DME', etc.)
+        num_samples: Number of samples to load
+        base_dir: Base directory containing images
+        
+    Returns:
+        images: Stacked tensor of preprocessed images
+        labels: List of image filenames
     """
-
     transform = Compose([
         Resize((512, 512)),
         ToTensor()
     ])
 
+    # Find all images matching category pattern
     pattern = os.path.join(base_dir, f"{category}-*.jpeg")
-    img_paths = sorted(glob(pattern))[:num_samples]  # grab first N
+    img_paths = sorted(glob(pattern))[:num_samples]
 
     images = []
     labels = []
 
+    # Load and preprocess each image
     for path in img_paths:
-        img = Image.open(path).convert("L")
-        images.append(transform(img))  # [1, H, W]
+        img = Image.open(path).convert("L")  # Convert to grayscale
+        images.append(transform(img))
         labels.append(os.path.basename(path))
 
     return torch.stack(images), labels
 
-def visualize_category(model, pixelcnn, images, labels, category_name, save_dir):
-    model.eval(); pixelcnn.eval()
-    fig, axes = plt.subplots(nrows=3, ncols=6, figsize=(18, 9))
+def visualize_category(model, images, labels, category_name, save_dir):
+    """
+    Visualize model predictions for a category of images.
+    
+    For each image, generates:
+    1. Input image
+    2. Reconstructed image
+    3. Alignment Loss Map (ALM)
+    4. Residual map
+    
+    Also computes anomaly scores and AUROC metrics.
+    
+    Args:
+        model: Trained VQVAE model
+        images: Batch of input images
+        labels: Image labels
+        category_name: Name of the category
+        save_dir: Directory to save visualizations
+    """
+    model.eval()
+    fig, axes = plt.subplots(nrows=3, ncols=4, figsize=(16, 9))
+
     for i in range(3):
+        # Get model predictions
         x = images[i].unsqueeze(0).to(model.device)
-        embedding_loss, x_hat, _, alm_map, encoding_indices = model(x, return_extra=True)
+        embedding_loss, x_hat, _, alm_map, encoding_indices = model(x)
+
+        # Compute residual map (difference between input and reconstruction)
         residual_map = torch.abs(x - x_hat)
+        res_np = residual_map[0, 0].detach().cpu().numpy()
+        res_norm = (res_np - res_np.min()) / (res_np.max() - res_np.min() + 1e-8)
+        res_score = res_norm.mean()
+        res_pred = 1 if res_score >= 0.5 else 0
+
+        # Process Alignment Loss Map (ALM)
         alm_up = F.interpolate(alm_map, size=(512, 512), mode='bilinear')
-        res_up = residual_map
-        nll_map = get_nll_map(pixelcnn, encoding_indices[0])
-        nll_up = F.interpolate(nll_map.unsqueeze(0).unsqueeze(0), size=(512, 512), mode='bilinear')[0,0]
-        imgs = [x[0,0], x_hat[0,0], alm_up[0,0], encoding_indices[0].float(), nll_up, res_up[0,0]]
-        titles = ['Input', 'Reconstruction', 'ALM', 'Latent Indices', 'NLL Map', 'Residual']
-        for j in range(6):
+        alm_np = alm_up[0, 0].detach().cpu().numpy()
+        alm_norm = (alm_np - alm_np.min()) / (alm_np.max() - alm_np.min() + 1e-8)
+        alm_score = alm_np.mean()
+        alm_pred = 1 if alm_score >= 0.5 else 0
+
+        # Set ground truth label (0 for normal, 1 for abnormal)
+        label = 0 if category_name == 'NORMAL' else 1
+
+        # Compute AUROC scores
+        try:
+            auroc_alm = roc_auc_score([label, 1 - label], [alm_score, 0.0])
+            auroc_res = roc_auc_score([label, 1 - label], [res_score, 0.0])
+        except:
+            auroc_alm = auroc_res = -1  # fallback if computation fails
+
+        # Prepare visualization text
+        alm_str = (
+            f"ALM\nScore={alm_score:.2f} → Pred: {alm_pred} ({'Abnormal' if alm_pred else 'Normal'})"
+            f"\nAUROC={auroc_alm:.4f}"
+        )
+        res_str = (
+            f"Residual\nScore={res_score:.2f} → Pred: {res_pred} ({'Abnormal' if res_pred else 'Normal'})"
+            f"\nAUROC={auroc_res:.4f}"
+        )
+        
+        # Prepare images for visualization
+        imgs = [x[0, 0], x_hat[0, 0], alm_norm, res_norm]
+        titles = ['Input', 'Reconstruction', alm_str, res_str]
+
+        # Plot each image
+        for j in range(4):
             ax = axes[i, j]
-            ax.imshow(imgs[j].cpu(), cmap='gray')
-            ax.set_title(titles[j])
+            if j >= 2:
+                ax.imshow(imgs[j], cmap='jet')  # Color map for ALM/Residual maps
+            else:
+                ax.imshow(imgs[j].detach().cpu(), cmap='gray')  # Grayscale for input/reconstruction
+            ax.set_title(titles[j], fontsize=10)
             ax.axis('off')
+
+    # Save visualization
     plt.tight_layout()
     save_path = os.path.join(save_dir, f"{category_name}_grid.png")
     plt.savefig(save_path)
     plt.close()
 
 def main():
+    """
+    Main inference function that:
+    1. Loads trained model
+    2. Processes each category of images
+    3. Generates visualizations and metrics
+    """
     parser = argparse.ArgumentParser()
-    parser.add_argument('--model_ckpt', type=str, required=True)
-    parser.add_argument('--pixelcnn_ckpt', type=str, required=True)
-    parser.add_argument('--output_dir', type=str, default='inference_outputs')
+    parser.add_argument('--model_dir', type=str, required=True)
     args = parser.parse_args()
 
-    os.makedirs(args.output_dir, exist_ok=True)
-    
-    ckpt_dir = Path(args.model_ckpt).parent
-    config_path = ckpt_dir / "config.yaml"
+    # Setup paths and load model configuration
+    model_ckpt = Path(args.model_dir)
+    ckpt_dir = model_ckpt.parent
+    config_path = Path(ckpt_dir) / "config.yaml"
+    output_dir = os.path.join(ckpt_dir, 'inference')
+    os.makedirs(output_dir, exist_ok=True)
 
+    # Load model configuration
     with open(config_path, "r") as f:
         args_dict = yaml.safe_load(f)
 
+    # Create args object from config
     class Args:
         def __init__(self, **entries):
             self.__dict__.update(entries)
 
     model_args = Args(**args_dict)
-
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = LitVQVAE.load_from_checkpoint(args.model_ckpt, args=model_args)
+    
+    # Load and prepare model
+    model = LitVQVAE.load_from_checkpoint(model_ckpt, args=model_args)
     model.to(device).eval()
 
-    pixelcnn = load_pixelcnn_model(args.pixelcnn_ckpt, device=device)
-
+    # Process each category
     for category in CATEGORY_LIST:
         images, labels = load_category_samples(category)
-        visualize_category(model, pixelcnn, images, labels, category, args.output_dir)
+        visualize_category(model, images, labels, category, output_dir)
 
-    print(f"All visualizations saved to: {args.output_dir}")
+    print(f"All visualizations saved to: {output_dir}")
 
 if __name__ == '__main__':
     main()

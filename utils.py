@@ -11,6 +11,13 @@ import numpy as np
 
 
 def load_cifar():
+    """
+    Load CIFAR-10 dataset with standard normalization.
+    
+    Returns:
+        train: Training dataset
+        val: Validation dataset
+    """
     train = datasets.CIFAR10(root="data", train=True, download=True,
                              transform=transforms.Compose([
                                  transforms.ToTensor(),
@@ -28,6 +35,13 @@ def load_cifar():
 
 
 def load_block():
+    """
+    Load block dataset from numpy file.
+    
+    Returns:
+        train: Training dataset
+        val: Validation dataset
+    """
     data_folder_path = os.getcwd()
     data_file_path = data_folder_path + \
         '/data/randact_traj_length_100_n_trials_1000_n_contexts_1.npy'
@@ -48,6 +62,16 @@ def load_block():
     return train, val
 
 def load_latent_block(latent_path=None):
+    """
+    Load latent block dataset from saved latent representations.
+    
+    Args:
+        latent_path: Path to latent representations file
+        
+    Returns:
+        train: Training dataset
+        val: Validation dataset
+    """
     if latent_path is None:
         data_folder_path = os.getcwd()
         data_file_path = data_folder_path + \
@@ -64,7 +88,18 @@ def load_latent_block(latent_path=None):
 
 
 def data_loaders(train_data, val_data, batch_size):
-
+    """
+    Create DataLoader instances for training and validation data.
+    
+    Args:
+        train_data: Training dataset
+        val_data: Validation dataset
+        batch_size: Batch size for loading
+        
+    Returns:
+        train_loader: Training data loader
+        val_loader: Validation data loader
+    """
     train_loader = DataLoader(train_data,
                               batch_size=batch_size,
                               shuffle=True,
@@ -77,6 +112,21 @@ def data_loaders(train_data, val_data, batch_size):
 
 
 def load_data_and_data_loaders(dataset, batch_size, latent_path):
+    """
+    Load dataset and create data loaders based on dataset type.
+    
+    Args:
+        dataset: Dataset name ('CIFAR10', 'BLOCK', or 'LATENT_BLOCK')
+        batch_size: Batch size for loading
+        latent_path: Path to latent representations (for LATENT_BLOCK)
+        
+    Returns:
+        training_data: Training dataset
+        validation_data: Validation dataset
+        training_loader: Training data loader
+        validation_loader: Validation data loader
+        x_train_var: Variance of training data
+    """
     if dataset == 'CIFAR10':
         training_data, validation_data = load_cifar()
         training_loader, validation_loader = data_loaders(
@@ -87,13 +137,12 @@ def load_data_and_data_loaders(dataset, batch_size, latent_path):
         training_data, validation_data = load_block()
         training_loader, validation_loader = data_loaders(
             training_data, validation_data, batch_size)
-
         x_train_var = np.var(training_data.data / 255.0)
+        
     elif dataset == 'LATENT_BLOCK':
         training_data, validation_data = load_latent_block(latent_path)
         training_loader, validation_loader = data_loaders(
             training_data, validation_data, batch_size)
-
         x_train_var = np.var(training_data.data)
 
     else:
@@ -104,11 +153,26 @@ def load_data_and_data_loaders(dataset, batch_size, latent_path):
 
 
 def readable_timestamp():
+    """
+    Generate a readable timestamp string for file naming.
+    
+    Returns:
+        str: Formatted timestamp string
+    """
     return time.ctime().replace('  ', ' ').replace(
         ' ', '_').replace(':', '_').lower()
 
 
 def save_latents_from_model(model, dataloader, embedding_dim, save_path):
+    """
+    Extract and save latent representations from a trained model.
+    
+    Args:
+        model: Trained VQVAE model
+        dataloader: DataLoader for input data
+        embedding_dim: Dimension of latent embeddings
+        save_path: Path to save latent representations
+    """
     model.eval()
     all_indices = []
     with torch.no_grad():

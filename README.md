@@ -1,64 +1,136 @@
-# Vector Quantized Variational Autoencoder
+# VQVAE for OCT Image Anomaly Detection
 
-This is a PyTorch implementation of the vector quantized variational autoencoder (https://arxiv.org/abs/1711.00937). 
+This repository implements a Vector Quantized Variational AutoEncoder (VQVAE) for anomaly detection in Optical Coherence Tomography (OCT) images. The model is trained on normal OCT images and can detect anomalies by measuring reconstruction error and alignment loss, with additional prior-based NLL implementation coming soon.
 
-You can find the author's [original implementation in Tensorflow here](https://github.com/deepmind/sonnet/blob/master/sonnet/python/modules/nets/vqvae.py) with [an example you can run in a Jupyter notebook](https://github.com/deepmind/sonnet/blob/master/sonnet/examples/vqvae_example.ipynb).
+The implementation is based on two main sources:
+1. The core VQVAE architecture and training pipeline is adapted from [MishaLaskin's PyTorch implementation](https://github.com/MishaLaskin/vqvae.git)
+2. The model structure and anomaly detection approach follows the methodology described in the paper ["Anomaly Detection in Optical Coherence Tomography Angiography (OCTA) with a Vector-Quantized Variational Auto-Encoder (VQ-VAE)"](https://www.mdpi.com/2306-5354/11/7/682) (2024)
 
-## Installing Dependencies
 
-To install dependencies, create a conda or virtual environment with Python 3 and then run `pip install -r requirements.txt`. 
+## Setup
 
-## Running the VQ VAE
+### Prerequisites
+- Python 3.8 or higher
+- CUDA-compatible GPU (recommended)
 
-To run the VQ-VAE simply run `python3 main.py`. Make sure to include the `-save` flag if you want to save your model. You can also add parameters in the command line. The default values are specified below:
+### Installation
 
+1. Clone the repository:
+```bash
+git clone [repository-url]
+cd vqvae
+```
+
+2. Install required packages:
+```bash
+pip install -r requirements.txt
+```
+
+### Project Structure
+```
+project_root/
+├── kermany2018/              # OCT dataset (should be in parent directory)
+│   └── OCT2017/
+│       ├── train/
+│       │   ├── NORMAL/
+│       │   ├── CNV/
+│       │   ├── DME/
+│       │   └── DRUSEN/
+│       └── test/
+├── vqvae/                    # Project directory
+│   ├── models/               # Model architecture files
+│   ├── datasets/             # Dataset handling code
+│   ├── saved_models/         # Training outputs
+│   │   └── YYYY-MM-DD_HH-MM-SS/
+│   │       ├── best-*.ckpt   # Best model checkpoint
+│   │       ├── config.yaml   # Training configuration
+│   │       └── latent/       # Latent representations
+│   ├── test_dataset/         # Test images for inference
+│   ├── train.py             # Training script
+│   ├── simple_inference.py  # Inference script
+│   └── utils.py             # Utility functions
+```
+
+Note: If your `kermany2018` dataset is located in a different directory, modify the `root` variable in `datasets/dataset.py`:
 ```python
-parser.add_argument("--batch_size", type=int, default=32)
-parser.add_argument("--n_updates", type=int, default=5000)
-parser.add_argument("--n_hiddens", type=int, default=128)
-parser.add_argument("--n_residual_hiddens", type=int, default=32)
-parser.add_argument("--n_residual_layers", type=int, default=2)
-parser.add_argument("--embedding_dim", type=int, default=64)
-parser.add_argument("--n_embeddings", type=int, default=512)
-parser.add_argument("--beta", type=float, default=.25)
-parser.add_argument("--learning_rate", type=float, default=3e-4)
-parser.add_argument("--log_interval", type=int, default=50)
+root = '../path/to/your/kermany2018'
 ```
 
-## Models
+## Usage
 
-The VQ VAE has the following fundamental model components:
+### Training
 
-1. An `Encoder` class which defines the map `x -> z_e`
-2. A `VectorQuantizer` class which transform the encoder output into a discrete one-hot vector that is the index of the closest embedding vector `z_e -> z_q`
-3. A `Decoder` class which defines the map `z_q -> x_hat` and reconstructs the original image
+The training script supports various hyperparameters through command-line arguments. Here's the basic usage:
 
-The Encoder / Decoder classes are convolutional and inverse convolutional stacks, which include Residual blocks in their architecture [see ResNet paper](https://arxiv.org/abs/1512.03385). The residual models are defined by the `ResidualLayer` and `ResidualStack` classes.
-
-These components are organized in the following folder structure:
-
-```
-models/
-    - decoder.py -> Decoder
-    - encoder.py -> Encoder
-    - quantizer.py -> VectorQuantizer
-    - residual.py -> ResidualLayer, ResidualStack
-    - vqvae.py -> VQVAE
+```bash
+python train.py --batch_size 16 --epochs 100 --n_hiddens 256 --embedding_dim 256 --n_embeddings 128 --beta 0.25 --learning_rate 1e-4
 ```
 
-## PixelCNN - Sampling from the VQ VAE latent space 
+Required arguments:
+- `--batch_size`: Batch size for training
+- `--epochs`: Number of training epochs
+- `--n_hiddens`: Hidden dimension size
+- `--embedding_dim`: Dimension of codebook vectors
+- `--n_embeddings`: Size of codebook
+- `--beta`: Commitment loss coefficient
+- `--learning_rate`: Learning rate for optimization
 
-To sample from the latent space, we fit a PixelCNN over the latent pixel values `z_ij`. The trick here is recognizing that the VQ VAE maps an image to a latent space that has the same structure as a 1 channel image. For example, if you run the default VQ VAE parameters you'll RGB map images of shape `(32,32,3)` to a latent space with shape `(8,8,1)`, which is equivalent to an 8x8 grayscale image. Therefore, you can use a PixelCNN to fit a distribution over the "pixel" values of the 8x8 1-channel latent space.
+Optional arguments:
+- `--n_residual_hiddens`: Hidden dimension in residual blocks (default: 64)
+- `--n_residual_layers`: Number of residual layers (default: 4)
+- `--dropout`: Dropout rate (default: 0.1)
+- `--patience`: Early stopping patience (default: 10)
+- `--min_delta`: Minimum change for early stopping (default: 1e-4)
+- `--device`: Training device (default: "gpu")
+- `--save`: Whether to save model outputs (default: True)
 
-To train the PixelCNN on latent representations, you first need to follow these steps:
+During training:
+1. A new directory is created in `saved_models/` with the current timestamp
+2. Model checkpoints are saved in this directory
+3. Latent representations are saved in the `latent/` subdirectory
+4. Training configuration is saved as `config.yaml`
 
-1. Train the VQ VAE on your dataset of choice
-2. Use saved VQ VAE parameters to encode your dataset and save discrete latent space representations with `np.save` API. In the `quantizer.py` this is the `min_encoding_indices` variable. 
-3. Specify path to your saved latent space dataset in `utils.load_latent_block` function.
-4. Run the PixelCNN script
+### Inference and Visualization
 
-To run the PixelCNN, simply type 
+After training, you can run inference and generate visualizations using:
 
-`python pixelcnn/gated_pixelcnn.py`
+```bash
+python inference.py --model_dir path/to/saved_models/YYYY-MM-DD_HH-MM-SS/best-*.ckpt
+```
 
-as well as any parameters (see the argparse statements). The default dataset is `LATENT_BLOCK` which will only work if you have trained your VQ VAE and saved the latent representations.
+Required arguments:
+- `--model_dir`: Path to the model checkpoint file
+
+The script will:
+1. Load the trained model
+2. Process images from each category (CNV, DME, DRUSEN, NORMAL)
+3. Generate visualizations including:
+   - Input images
+   - Reconstructed images
+   - Alignment Loss Maps (ALM)
+   - Residual maps
+4. Save visualizations in the `inference/` directory within the model's directory
+5. Compute and display anomaly scores and AUROC metrics
+
+## Model Architecture
+
+The VQVAE consists of:
+- Encoder: Converts input images to continuous latent representations
+- Vector Quantizer: Discretizes continuous latent vectors using a codebook
+- Decoder: Reconstructs images from quantized latent vectors
+
+The model uses residual blocks for better feature extraction and reconstruction.
+
+## Hyperparameter Tuning
+
+You can use the provided `sweep.yaml` for hyperparameter optimization with Weights & Biases. The sweep configuration includes:
+- Learning rate: [1e-3, 1e-4, 1e-5]
+- Beta: [0.1, 0.25, 0.5]
+- Embedding dimension: [64, 128]
+- Number of embeddings: [32, 64]
+- Hidden dimensions: [128, 256]
+- Dropout: [0.1, 0.2]
+
+## License
+
+Not Yet
