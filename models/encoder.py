@@ -58,8 +58,8 @@ class Encoder(nn.Module):
             # Residual stack for better feature extraction
             ResidualStack(
                 h_dim, h_dim, res_h_dim, n_res_layers),
-            # Adaptive pooling to ensure fixed output size (32x32)
-            nn.AdaptiveAvgPool2d((32, 32))
+            # Adaptive pooling to ensure fixed output size
+            nn.AdaptiveAvgPool2d((64, 64))
         )
 
     def forward(self, x):

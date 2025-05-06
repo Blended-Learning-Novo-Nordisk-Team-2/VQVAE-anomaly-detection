@@ -1,5 +1,5 @@
 program: train.py
-method: bayes  # 빠른 수렴을 위해 Bayesian optimization 사용
+method: bayes  # Bayesian optimization
 metric:
   name: val_total_loss
   goal: minimize
@@ -12,13 +12,13 @@ parameters:
     values: [64, 128]
 
   n_embeddings:
-    values: [32, 64]
+    value: 64
 
   dropout:
     values: [0.1, 0.2]
 
   learning_rate:
-    values: [1e-3, 1e-4, 1e-5]
+    value: 1e-4
 
   batch_size:
     value: 16

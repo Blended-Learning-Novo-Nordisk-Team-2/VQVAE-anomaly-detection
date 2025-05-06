@@ -1,5 +1,5 @@
 [default]
 entity = ajhh98-yonsei-university
-project = VQVAE-sweep
+project = vqvae-sweep-2
 base_url = https://api.wandb.ai
 

@@ -99,8 +99,8 @@ def main():
 
     # Initialize wandb logger
     logger = WandbLogger(
-        project="VQVAE-sweep",
-        name=f"latent{args.embedding_dim}_lr{args.learning_rate}",
+        project="VQVAE-sweep-2",
+        name=f"codebook_size{args.n_embeddings}: latent_dim{args.embedding_dim}_beta{args.beta}_hidden{args.n_hiddens}",
         save_dir=save_dir,
         log_model=True
     )

@@ -37,7 +37,7 @@ class Decoder(nn.Module):
 
             # Second deconv block: h_dim -> h_dim
             nn.ConvTranspose2d(h_dim, h_dim,
-                               kernel_size=kernel, stride=stride, padding=1),
+                               kernel_size=kernel-1, stride=stride-1, padding=1),
             nn.ReLU(),
             nn.Dropout(dropout),
             

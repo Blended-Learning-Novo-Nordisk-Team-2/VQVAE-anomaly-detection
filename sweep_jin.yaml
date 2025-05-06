@@ -1,0 +1,51 @@
+program: train.py
+method: bayes  # Bayesian optimization
+metric:
+  name: val_total_loss
+  goal: minimize
+
+parameters:
+  beta:
+    values: [0.1, 0.25, 0.5]
+
+  embedding_dim:
+    values: [64, 128]
+
+  n_embeddings:
+    value: 32
+
+  dropout:
+    values: [0.1, 0.2]
+
+  learning_rate:
+    value: 1e-4
+
+  batch_size:
+    value: 16
+
+  seed:
+    value: 42
+
+  n_hiddens:
+    values: [128, 256]
+
+  n_residual_hiddens:
+    value: 64
+
+  n_residual_layers:
+    value: 4
+
+  epochs:
+    value: 100
+
+  patience:
+    value: 10
+
+  min_delta:
+    value: 1e-4
+
+  device:
+    value: gpu
+
+  save:
+    value: True
