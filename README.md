@@ -17,7 +17,7 @@ The implementation is based on two main sources:
 
 1. Clone the repository:
 ```bash
-git clone [repository-url]
+git clone https://github.com/Blended-Learning-Novo-Nordisk-Team-2/VQVAE-anomaly-detection.git
 cd vqvae
 ```
 
