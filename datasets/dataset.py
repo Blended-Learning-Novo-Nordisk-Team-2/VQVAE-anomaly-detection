@@ -6,6 +6,7 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision.datasets import MNIST
 import torchvision.transforms as transforms
 from sklearn.model_selection import train_test_split
+import numpy as np
 
 root = '../kermany2018'
 
@@ -90,6 +91,17 @@ class OCTDataset(Dataset):
 
         return img, self.labels[idx]
 
+def remove_margin(pil_img, threshold=240):
+    img_np = np.array(pil_img)
+    mask = img_np < threshold
+    coords = np.argwhere(mask)
+    if coords.shape[0] == 0:
+        return pil_img
+    y0, x0 = coords.min(axis=0)
+    y1, x1 = coords.max(axis=0) + 1
+    cropped = img_np[y0:y1, x0:x1]
+    return Image.fromarray(cropped)
+
 
 def get_dataloaders(args):
     """
@@ -118,10 +130,12 @@ def get_dataloaders(args):
         split='train',
         class_names=['NORMAL'],
         transform=transforms.Compose([
+            transforms.Lambda(remove_margin),
+            transforms.Resize((512, 512)),
             transforms.RandomHorizontalFlip(),  # Random horizontal flips
             transforms.RandomRotation(degrees=15),  # Random rotations
-            transforms.RandomResizedCrop(512, scale=(0.8, 1.0)),  # Random crops
             transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0)),  # Gaussian blur
+            transforms.ColorJitter(contrast=(1.0, 2.0)), # random contrast 
             transforms.ToTensor(),
             transforms.Normalize(mean=[0.5], std=[0.5])
         ]),

@@ -19,35 +19,52 @@ CATEGORY_LIST = ["CNV", "DME", "DRUSEN", "NORMAL"]
 all_scores = []
 all_labels = []
 
+def remove_margin(pil_img, threshold=240):
+    """
+    Remove white margin from a grayscale PIL image.
+    Returns a cropped PIL image.
+    """
+    img_np = np.array(pil_img)
+    mask = img_np < threshold
+    coords = np.argwhere(mask)
+
+    if coords.shape[0] == 0:
+        return pil_img  # if image is all white, return original
+
+    y0, x0 = coords.min(axis=0)
+    y1, x1 = coords.max(axis=0) + 1
+    cropped = img_np[y0:y1, x0:x1]
+    return Image.fromarray(cropped)
+
 def load_category_samples(category, num_samples=3, base_dir='test_dataset'):
     """
-    Load sample images from a specific category.
-    
+    Load and preprocess sample images from a specific OCT category.
+
     Args:
         category: Category name (e.g., 'CNV', 'DME', etc.)
-        num_samples: Number of samples to load
-        base_dir: Base directory containing images
-        
+        num_samples: Number of images to load
+        base_dir: Path to the base folder with images
+
     Returns:
-        images: Stacked tensor of preprocessed images
+        images: Tensor of shape (B, 1, 512, 512)
         labels: List of image filenames
     """
     transform = Compose([
-        Resize((512, 512)),
+        Resize((512, 512)),  # After cropping
         ToTensor()
     ])
 
-    # Find all images matching category pattern
     pattern = os.path.join(base_dir, f"{category}-*.jpeg")
     img_paths = sorted(glob(pattern))[:num_samples]
 
     images = []
     labels = []
 
-    # Load and preprocess each image
     for path in img_paths:
-        img = Image.open(path).convert("L")  # Convert to grayscale
-        images.append(transform(img))
+        img = Image.open(path).convert("L")         # 1. Grayscale
+        img = remove_margin(img, threshold=240)     # 2. Remove white margin
+        img = transform(img)                        # 3. Resize + ToTensor
+        images.append(img)
         labels.append(os.path.basename(path))
 
     return torch.stack(images), labels

@@ -1,10 +1,12 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import numpy as np
 from pytorch_lightning import LightningModule
 from models.encoder import Encoder
 from models.quantizer import VectorQuantizer
 from models.decoder import Decoder
+from models.regularization import MultiScaleResidualLoss, LatentConsistencyLoss
 
 
 class VQVAE(nn.Module):
@@ -58,7 +60,7 @@ class VQVAE(nn.Module):
             assert False
 
         if return_extra:
-            return embedding_loss, x_hat, perplexity, alignment_loss_map, encoding_indices
+            return embedding_loss, x_hat, perplexity, alignment_loss_map, encoding_indices, z_e, z_q
 
         return embedding_loss, x_hat, perplexity
 
@@ -81,6 +83,17 @@ class LitVQVAE(LightningModule):
         )
         self.lr = args.learning_rate      # Learning rate for optimization
 
+        # Regularization terms
+        self.ms_residual_loss_fn = MultiScaleResidualLoss()
+        self.latent_consistency_loss_fn = LatentConsistencyLoss()
+
+        # Weights for the regularization terms
+        self.lambda_ms = args.lambda_ms if hasattr(args, "lambda_ms") else 0.1
+        self.lambda_latent = args.lambda_latent if hasattr(args, "lambda_latent") else 0.05
+
+        self.multiscale_start_epoch = args.multiscale_start_epoch if hasattr(args, "multiscale_start_epoch") else 10
+
+
     def forward(self, x):
         return self.model(x, return_extra=True)
 
@@ -88,29 +101,53 @@ class LitVQVAE(LightningModule):
         x, _ = batch
         x = x.to(self.device)
         # Forward pass through model
-        embedding_loss, x_hat, perplexity, _, _ = self(x)
+        embedding_loss, x_hat, perplexity, _, _, z_e, z_q = self(x)
         # Calculate reconstruction loss (L1 loss)
         recon_loss = torch.mean(torch.abs(x_hat - x))
-        # Total loss = reconstruction loss + embedding loss
+
         loss = recon_loss + embedding_loss
 
+        if self.current_epoch >= self.multiscale_start_epoch:
+            multiscale_loss = self.ms_residual_loss_fn(x, x_hat)
+            loss += self.lambda_ms * multiscale_loss
+        else:
+            multiscale_loss = torch.tensor(0.0, device=self.device)
+
+        # ✅ latent loss는 항상 사용
+        latent_loss = self.latent_consistency_loss_fn(z_e, z_q)
+        loss += self.lambda_latent * latent_loss
+
         # Log training metrics
-        self.log("train_total_loss", loss, on_step=True, prog_bar=True)
-        self.log("train_recon_loss", recon_loss, on_step=True)
-        self.log("train_embedding_loss", embedding_loss, on_step=True)
-        self.log("train_perplexity", perplexity, on_step=True)
+        self.log_dict({
+            "train_total_loss": loss,
+            "train_recon_loss": recon_loss,
+            "train_embedding_loss": embedding_loss,
+            "train_multiscale_loss": multiscale_loss,
+            "train_latent_loss": latent_loss,
+            "train_perplexity": perplexity,
+        }, on_step=True, prog_bar=True)
 
         return loss
 
     def validation_step(self, batch, batch_idx):
         x, _ = batch
         x = x.to(self.device)
-        # Forward pass through model
-        embedding_loss, x_hat, perplexity, _, _ = self(x)
-        # Calculate reconstruction loss
-        recon_loss = torch.mean(torch.abs(x_hat - x))
-        # Total loss = reconstruction loss + embedding loss
+        # Forward pass
+        embedding_loss, x_hat, perplexity, _, _, z_e, z_q = self(x)
+        recon_loss = F.l1_loss(x_hat, x)
+
         loss = recon_loss + embedding_loss
+
+        # 조건부 multiscale loss
+        if self.current_epoch >= self.multiscale_start_epoch:
+            multiscale_loss = self.ms_residual_loss_fn(x, x_hat)
+            loss += self.lambda_ms * multiscale_loss
+        else:
+            multiscale_loss = torch.tensor(0.0, device=self.device)
+
+        # latent loss는 항상 포함
+        latent_loss = self.latent_consistency_loss_fn(z_e, z_q)
+        loss += self.lambda_latent * latent_loss
 
         # Store validation metrics for epoch end calculation
         if not hasattr(self, "val_outputs"):
@@ -118,6 +155,9 @@ class LitVQVAE(LightningModule):
         self.val_outputs.append({
             "val_total_loss": loss.detach(),
             "val_recon_loss": recon_loss.detach(),
+            "val_embedding_loss": embedding_loss.detach(),
+            "val_multiscale_loss": multiscale_loss.detach(),
+            "val_latent_loss": latent_loss.detach(),
             "val_perplexity": perplexity.detach()
         })
 
@@ -128,14 +168,15 @@ class LitVQVAE(LightningModule):
         if not hasattr(self, "val_outputs") or len(self.val_outputs) == 0:
             return
 
-        total_loss = torch.stack([x["val_total_loss"] for x in self.val_outputs]).mean()
-        recon_loss = torch.stack([x["val_recon_loss"] for x in self.val_outputs]).mean()
-        perplexity = torch.stack([x["val_perplexity"] for x in self.val_outputs]).mean()
+        # compute mean
+        metrics = {}
+        keys = self.val_outputs[0].keys()
+        for key in keys:
+            metrics[key] = torch.stack([x[key] for x in self.val_outputs]).mean()
 
-        # Log validation metrics
-        self.log("val_total_loss", total_loss, prog_bar=True)
-        self.log("val_recon_loss", recon_loss)
-        self.log("val_perplexity", perplexity)
+        # print log
+        for key, value in metrics.items():
+            self.log(key, value, prog_bar=("total" in key))
 
         # Clear validation outputs for next epoch
         self.val_outputs.clear()

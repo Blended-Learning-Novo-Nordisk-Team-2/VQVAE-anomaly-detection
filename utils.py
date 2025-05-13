@@ -161,6 +161,7 @@ def readable_timestamp():
     """
     return time.ctime().replace('  ', ' ').replace(
         ' ', '_').replace(':', '_').lower()
+        
 
 
 def save_latents_from_model(model, dataloader, embedding_dim, save_path):
