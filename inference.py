@@ -1,4 +1,5 @@
 import os
+import cv2
 import argparse
 import torch
 import numpy as np
@@ -94,7 +95,7 @@ def visualize_category(model, images, labels, category_name, save_dir):
     for i in range(3):
         # Run model inference
         x = images[i].unsqueeze(0).to(model.device)
-        embedding_loss, x_hat, _, alm_map, encoding_indices = model(x)
+        embedding_loss, x_hat, _, alm_map, encoding_indices, _, _ = model(x)
 
         # --- Residual Map Processing ---
         # Compute absolute difference between input and reconstruction
@@ -112,6 +113,7 @@ def visualize_category(model, images, labels, category_name, save_dir):
         # Upsample ALM to match image size
         alm_up = F.interpolate(alm_map, size=(512, 512), mode='bilinear')
         alm_np = alm_up[0, 0].detach().cpu().numpy()
+        alm_np = cv2.GaussianBlur(alm_np, (5, 5), sigmaX=1)
 
         # Normalize for visualization (not used for scoring)
         alm_norm = (alm_np - alm_np.min()) / (alm_np.max() - alm_np.min() + 1e-8)
@@ -125,10 +127,10 @@ def visualize_category(model, images, labels, category_name, save_dir):
 
         # Format prediction info for plotting
         alm_str = (
-            f"ALM\nScore={alm_score:.2f} → Pred: {alm_pred} ({'Abnormal' if alm_pred else 'Normal'})"
+            f"ALM\nScore={alm_score:.2f}"
         )
         res_str = (
-            f"Residual\nScore={res_score:.2f} → Pred: {res_pred} ({'Abnormal' if res_pred else 'Normal'})"
+            f"Residual\nScore={res_score:.2f}"
         )
 
         # Collect visual elements: input, reconstruction, ALM, residual
@@ -139,7 +141,7 @@ def visualize_category(model, images, labels, category_name, save_dir):
         for j in range(4):
             ax = axes[i, j]
             if j >= 2:
-                ax.imshow(imgs[j], cmap='jet')  # Use color for ALM/Residual
+                ax.imshow(imgs[j], cmap='jet', vmin=0, vmax=1)  # Use color for ALM/Residual
             else:
                 ax.imshow(imgs[j].detach().cpu(), cmap='gray')  # Use grayscale for input/reconstruction
             ax.set_title(titles[j], fontsize=10)

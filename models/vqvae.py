@@ -92,6 +92,7 @@ class LitVQVAE(LightningModule):
         self.lambda_latent = args.lambda_latent if hasattr(args, "lambda_latent") else 0.05
 
         self.multiscale_start_epoch = args.multiscale_start_epoch if hasattr(args, "multiscale_start_epoch") else 10
+        self.alm_start_epoch = args.alm_start_epoch if hasattr(args, "multiscale_start_epoch") else 10
 
 
     def forward(self, x):
@@ -113,7 +114,13 @@ class LitVQVAE(LightningModule):
         else:
             multiscale_loss = torch.tensor(0.0, device=self.device)
 
-        # ✅ latent loss는 항상 사용
+        if self.current_epoch >= self.alm_start_epoch:
+            alignment_loss = (z_e - z_q.detach()).pow(2).mean()
+            loss += self.lambda_alm * alignment_loss
+        else:
+            alignment_loss = torch.tensor(0.0, device=self.device)
+
+        # latent loss
         latent_loss = self.latent_consistency_loss_fn(z_e, z_q)
         loss += self.lambda_latent * latent_loss
 
@@ -138,14 +145,20 @@ class LitVQVAE(LightningModule):
 
         loss = recon_loss + embedding_loss
 
-        # 조건부 multiscale loss
+        # conditional loss
         if self.current_epoch >= self.multiscale_start_epoch:
             multiscale_loss = self.ms_residual_loss_fn(x, x_hat)
             loss += self.lambda_ms * multiscale_loss
         else:
             multiscale_loss = torch.tensor(0.0, device=self.device)
 
-        # latent loss는 항상 포함
+        if self.current_epoch >= self.alm_start_epoch:
+            alignment_loss = (z_e - z_q.detach()).pow(2).mean()
+            loss += self.lambda_alm * alignment_loss
+        else:
+            alignment_loss = torch.tensor(0.0, device=self.device)
+
+        # latent loss
         latent_loss = self.latent_consistency_loss_fn(z_e, z_q)
         loss += self.lambda_latent * latent_loss
 

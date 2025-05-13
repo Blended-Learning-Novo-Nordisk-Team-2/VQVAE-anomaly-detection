@@ -8,7 +8,7 @@ import time
 import os
 from datasets.block import BlockDataset, LatentBlockDataset
 import numpy as np
-
+from models.vqvae import LitVQVAE
 
 def load_cifar():
     """
@@ -179,10 +179,8 @@ def save_latents_from_model(model, dataloader, embedding_dim, save_path):
     with torch.no_grad():
         for x, _ in dataloader:
             x = x.to(next(model.parameters()).device)
-            _, _, _, _, indices = model(x)
+            _, _, _, _, indices, _, _ = model(x)
             all_indices.append(indices.cpu().numpy())
     all_latents = np.concatenate(all_indices, axis=0)  # [N, H, W]
     np.save(save_path, all_latents.astype(np.uint8))
 
-if __name__ == "__main__":
-    save_latents_from_model
