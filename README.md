@@ -176,7 +176,7 @@ The script will:
 
 ## ⚙️ Hyperparameter Tuning
 
-You can use the provided `sweep_jin.yaml` or `sweep_Cheka.yaml` for hyperparameter optimization with Weights & Biases. The sweep configuration includes:
+You can create `sweep.yaml` for hyperparameter optimization with Weights & Biases. The sweep configuration includes:
 -   Learning rate
 -   Beta (commitment loss)
 -   Embedding dimension
