@@ -114,12 +114,12 @@ def get_dataloaders(args):
     - Gaussian blur for augmentation
     
     Validation transformations only include:
-    - Resize to 512x512
+    - Resize to 512x512 for VQVAE and 256x256 for ViT
     - Normalization
     """
     # Validation transforms
     transform = transforms.Compose([
-        transforms.Resize((512, 512)),
+        transforms.Resize((512, 512)),  # For VQVAE
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.5], std=[0.5])
     ])
@@ -131,7 +131,7 @@ def get_dataloaders(args):
         class_names=['NORMAL'],
         transform=transforms.Compose([
             transforms.Lambda(remove_margin),
-            transforms.Resize((512, 512)),
+            transforms.Resize((512, 512)),  # For VQVAE
             transforms.RandomHorizontalFlip(),  # Random horizontal flips
             transforms.RandomRotation(degrees=15),  # Random rotations
             transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0)),  # Gaussian blur
@@ -156,5 +156,147 @@ def get_dataloaders(args):
     # Create dataloaders with specified batch size and workers
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=4, pin_memory=True)
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=4, pin_memory=True)
+
+    return train_loader, val_loader
+
+class VITMLPDataset(Dataset):
+    """
+    Dataset for VITMLP model training.
+    Features:
+    - Separate train/val split for VITMLP
+    - More diverse validation set
+    - Additional data augmentation
+    """
+    def __init__(self, root_dir, split='train', class_names=['NORMAL'], 
+                 transform=None, val_split=0.2, subset='train', random_seed=42):
+        self.image_paths = []
+        self.labels = []
+        self.class_to_label = {'NORMAL': 0, 'ABNORMAL': 1}
+        
+        # Default transformations if none provided
+        self.transform = transform or transforms.Compose([
+            transforms.Resize((512, 512)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.5], std=[0.5])
+        ])
+        self.subset = subset
+
+        # Load all data first
+        all_paths = []
+        all_labels = []
+
+        # Collect all image paths and labels
+        for class_name in class_names:
+            folder = os.path.join(root_dir, 'OCT2017', split, class_name)
+            if not os.path.exists(folder):
+                print(f"Warning: {folder} does not exist!")
+                continue
+            for fname in os.listdir(folder):
+                if fname.endswith('.jpeg') or fname.endswith('.jpg'):
+                    all_paths.append(os.path.join(folder, fname))
+                    label = 0 if class_name == 'NORMAL' else 1
+                    all_labels.append(label)
+
+        # Split data into train and validation sets with stratification
+        train_paths, val_paths, train_labels, val_labels = train_test_split(
+            all_paths, all_labels, 
+            test_size=val_split, 
+            random_state=random_seed, 
+            stratify=all_labels,
+            shuffle=True
+        )
+
+        # Select appropriate subset
+        if self.subset == 'train':
+            self.image_paths = train_paths
+            self.labels = train_labels
+        elif self.subset == 'val':
+            self.image_paths = val_paths
+            self.labels = val_labels
+        else:
+            raise ValueError(f"Unknown subset type: {self.subset}")
+
+    def __len__(self):
+        return len(self.image_paths)
+
+    def __getitem__(self, idx):
+        img = Image.open(self.image_paths[idx]).convert('L')
+        img = self.transform(img)
+        return img, self.labels[idx]
+
+def get_vitmlp_dataloaders(args):
+    """
+    Create training and validation dataloaders for VITMLP model.
+    
+    Training transformations include:
+    - Random horizontal flips
+    - Random rotations
+    - Random resized crops
+    - Gaussian blur
+    - Color jitter
+    - Random erasing
+    
+    Validation transformations:
+    - Resize
+    - Normalization
+    """
+    # Validation transforms
+    val_transform = transforms.Compose([
+        transforms.Resize((512, 512)),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.5], std=[0.5])
+    ])
+
+    # Training transforms with more aggressive augmentation
+    train_transform = transforms.Compose([
+        transforms.Lambda(remove_margin),
+        transforms.Resize((512, 512)),
+        transforms.RandomHorizontalFlip(p=0.5),
+        transforms.RandomRotation(degrees=30),
+        transforms.RandomAffine(degrees=0, translate=(0.1, 0.1)),
+        transforms.GaussianBlur(kernel_size=3, sigma=(0.1, 2.0)),
+        transforms.ToTensor(),
+        transforms.ColorJitter(contrast=(0.8, 1.2), brightness=(0.8, 1.2)),
+        transforms.RandomErasing(p=0.3),
+        transforms.Normalize(mean=[0.5], std=[0.5])
+    ])
+
+    # Training dataset with augmentations
+    train_dataset = VITMLPDataset(
+        root_dir=root,
+        split='train',
+        class_names=['NORMAL'],
+        transform=train_transform,
+        val_split=0.2,  # Increased validation split
+        subset='train'
+    )
+
+    # Validation dataset without augmentations
+    val_dataset = VITMLPDataset(
+        root_dir=root,
+        split='train',
+        class_names=['NORMAL'],
+        transform=val_transform,
+        val_split=0.2,
+        subset='val'
+    )
+
+    # Create dataloaders with specified batch size and workers
+    train_loader = DataLoader(
+        train_dataset, 
+        batch_size=args.batch_size, 
+        shuffle=True, 
+        num_workers=4, 
+        pin_memory=True,
+        drop_last=True  # Drop last incomplete batch
+    )
+    
+    val_loader = DataLoader(
+        val_dataset, 
+        batch_size=args.batch_size, 
+        shuffle=False, 
+        num_workers=4, 
+        pin_memory=True
+    )
 
     return train_loader, val_loader

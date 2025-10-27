@@ -88,6 +88,7 @@ class LitVQVAE(LightningModule):
         self.latent_consistency_loss_fn = LatentConsistencyLoss()
 
         # Weights for the regularization terms
+        self.lambda_alm = args.lambda_alm if hasattr(args, "lambda_alm") else 0.1
         self.lambda_ms = args.lambda_ms if hasattr(args, "lambda_ms") else 0.1
         self.lambda_latent = args.lambda_latent if hasattr(args, "lambda_latent") else 0.05
 
@@ -131,8 +132,9 @@ class LitVQVAE(LightningModule):
             "train_embedding_loss": embedding_loss,
             "train_multiscale_loss": multiscale_loss,
             "train_latent_loss": latent_loss,
+            "train_alignment_loss": alignment_loss,
             "train_perplexity": perplexity,
-        }, on_step=True, prog_bar=True)
+        }, on_step=True, prog_bar=True, sync_dist=True)
 
         return loss
 
@@ -171,6 +173,7 @@ class LitVQVAE(LightningModule):
             "val_embedding_loss": embedding_loss.detach(),
             "val_multiscale_loss": multiscale_loss.detach(),
             "val_latent_loss": latent_loss.detach(),
+            "val_alignment_loss": alignment_loss.detach(),
             "val_perplexity": perplexity.detach()
         })
 
@@ -189,7 +192,7 @@ class LitVQVAE(LightningModule):
 
         # print log
         for key, value in metrics.items():
-            self.log(key, value, prog_bar=("total" in key))
+            self.log(key, value, prog_bar=("total" in key), sync_dist=True)
 
         # Clear validation outputs for next epoch
         self.val_outputs.clear()
