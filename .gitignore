@@ -10,3 +10,4 @@ saved_models/
 Miniconda*
 wandb/
 sweep_*.yaml
+test_dataset/
